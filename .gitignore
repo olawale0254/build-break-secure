@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- build-break-secure demo ---
+# The demo's .env holds FAKE keys and is part of the attack, so commit it.
+!fake_github/repo/.env
+# Written fresh on every run.
+fake_github/public_comments.txt
