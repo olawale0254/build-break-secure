@@ -35,18 +35,86 @@ TOOLS = [
      "required": ["number", "body"]},
 ]
 
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5-5")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
+# Models come from models.yaml (committed, no secrets). Each has a short name,
+# e.g. `qwen` or `claude`, that --model accepts. API keys never go there: the
+# SDKs read them from the environment (.env).
+MODELS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models.yaml")
+
+
+def _load_config():
+    try:
+        import yaml
+        with open(MODELS_FILE) as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return {}
+
+
+_CONFIG = _load_config()
+MODELS = _CONFIG.get("models") or {}  # short name -> {"provider", "name"}
+DEFAULT_MODEL = _CONFIG.get("default", "qwen")
+
+
+def _first_model(provider, fallback):
+    """The first model listed for a provider is its default."""
+    for entry in MODELS.values():
+        if entry.get("provider") == provider and entry.get("name"):
+            return entry["name"]
+    return fallback
+
+
+# An environment variable (e.g. OLLAMA_MODEL=...) still beats the file.
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL") or _first_model("anthropic", "claude-opus-5-5")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL") or _first_model("openai", "gpt-4o")
 
 # Ollama runs locally and speaks the OpenAI API, so we reuse that adapter and
 # just point the client at the local server. Default model is Qwen.
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3.5:4b")
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL") or _first_model("ollama", "qwen3.5:4b")
+OLLAMA_BASE_URL = (os.environ.get("OLLAMA_BASE_URL") or _CONFIG.get("ollama_url")
+                   or "http://localhost:11434/v1")
+
+
+def set_model(provider, name):
+    """Override the model for one run (the --model flag)."""
+    global ANTHROPIC_MODEL, OPENAI_MODEL, OLLAMA_MODEL
+    if provider == "anthropic":
+        ANTHROPIC_MODEL = name
+    elif provider == "openai":
+        OPENAI_MODEL = name
+    elif provider == "ollama":
+        OLLAMA_MODEL = name
+
+
+def choose(model=None, provider=None):
+    """Turn --model / --provider into the provider to use, setting its model.
+
+    --model qwen          a short name from models.yaml: picks provider and model
+    --model llama3.2:3b   any other tag: runs on --provider (default ollama)
+    --provider anthropic  no --model: that provider's first model in models.yaml
+    neither               the `default` short name in models.yaml
+    """
+    if model is None and provider is None:
+        model = DEFAULT_MODEL
+    if model in MODELS:
+        entry = MODELS[model]
+        provider = entry["provider"]
+        if entry.get("name"):
+            set_model(provider, entry["name"])
+    elif model:
+        provider = provider or "ollama"
+        set_model(provider, model)
+    if provider not in PROVIDERS:
+        raise SystemExit(f"unknown provider '{provider}'. Use one of: {', '.join(PROVIDERS)}")
+    return provider
+
+
+PROVIDERS = ["ollama", "anthropic", "openai", "mock"]
 
 
 def model_name(provider):
     return {"anthropic": ANTHROPIC_MODEL, "openai": OPENAI_MODEL,
-            "ollama": f"{OLLAMA_MODEL} (local)", "mock": "mock (scripted replay)"}[provider]
+            "ollama": f"{OLLAMA_MODEL} ({'Ollama cloud' if OLLAMA_MODEL.endswith(':cloud') else 'local'})",
+            "mock": "mock (scripted replay)"}[provider]
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +267,15 @@ def openai_complete(system, user_text):
 
 def ollama_call(system, history):
     client = _openai_client(OLLAMA_BASE_URL, "ollama")
-    return _chat_call(client, OLLAMA_MODEL, system, history)
+    try:
+        return _chat_call(client, OLLAMA_MODEL, system, history)
+    except Exception as e:
+        if "does not support tools" in str(e):
+            raise SystemExit(f"\n{OLLAMA_MODEL} can't call tools, so it can't drive MaintainerBot. "
+                             "Pick another model from models.yaml.")
+        if "not found" in str(e):
+            raise SystemExit(f"\n{OLLAMA_MODEL} isn't downloaded. Run: ollama pull {OLLAMA_MODEL}")
+        raise
 
 
 def ollama_complete(system, user_text):

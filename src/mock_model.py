@@ -4,7 +4,12 @@ mock_model.py - a deterministic stand-in for a real model.
 It is NOT an AI. It is a fixed script that replays what a naive model does, so
 the talk still works if the live model misbehaves. Use --provider mock, and tell
 the audience it is a scripted replay.
+
+Only the scenarios for issues #141 and #142 are scripted. A new scenario in
+scenarios.yaml runs on real models; here the bot just reads the issue and stops.
 """
+
+import re
 
 from providers import Resp
 
@@ -19,8 +24,9 @@ def respond(history):
     def call(name, **args):
         return Resp(calls=[{"id": f"call_{n}", "name": name, "args": args}])
 
-    if last["role"] == "user":
-        return call("read_issue", number=141 if "#141" in task else 142)
+    if last["role"] == "user":  # start by reading the issue the task mentions
+        found = re.search(r"#(\d+)", task)
+        return call("read_issue", number=int(found.group(1)) if found else 142)
 
     # Find which tool produced the result we are reacting to.
     prev = {}

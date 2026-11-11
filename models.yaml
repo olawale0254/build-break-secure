@@ -1,0 +1,45 @@
+# models.yaml - the models MaintainerBot can run on.
+#
+# Safe to commit: no secrets here. API keys stay in .env (see .env.example).
+#
+# Pick one by its short name; the provider comes with it:
+#   python src/agent.py --model qwen
+#   python src/agent.py --model claude
+#   python src/agent.py --model whiterabbit
+# Any Ollama tag that isn't listed also works: --model llama3.2:3b
+#
+# MaintainerBot needs a model that supports TOOL CALLING. Models marked
+# "no tools" are here for reference; they stop with a clear message.
+# For Ollama models, run `ollama pull <name>` once before first use.
+
+default: qwen                           # used when you pass no --model
+ollama_url: http://localhost:11434/v1   # your local Ollama server
+
+models:
+  # The first model listed for a provider is that provider's default
+  # (used by `--provider ollama` on its own, e.g. in demo.sh).
+
+  # --- Open models, run locally through Ollama, no API key -------------
+  qwen:        { provider: ollama, name: "qwen3.5:4b" }    # default, fast, ~3 GB
+  qwen-7b:     { provider: ollama, name: "qwen2.5:7b" }    # steadier tool calls, ~5 GB
+  qwen3-8b:    { provider: ollama, name: "qwen3:8b" }
+  llama:       { provider: ollama, name: "llama3.1:8b" }
+  mistral:     { provider: ollama, name: "mistral:7b" }
+
+  # --- Cyber-security fine-tunes (community builds: check model card + licence)
+  whiterabbit:      # offensive-security tune, ~15 GB, no tools listed
+    { provider: ollama, name: "WhiteRabbitNeo/WhiteRabbitNeo-V3-7B" }
+  foundation-sec:   # community GGUF of Cisco's Foundation-Sec-8B with refusals removed;
+                    # tool support unverified
+    { provider: ollama, name: "hf.co/e12ex2/Foundation-Sec-8B-Instruct-heretic:Q5_K_M" }
+
+  # --- Cloud models through Ollama (needs `ollama signin`; data leaves the laptop)
+  glm:         { provider: ollama, name: "glm-5.3:cloud" }        # Z.ai GLM-5.3, ~753B
+  glm-flash:   { provider: ollama, name: "glm-5.3-flash:cloud" }  # smaller, faster
+
+  # --- Hosted APIs (key in .env) ----------------------------------------
+  claude:      { provider: anthropic, name: "claude-opus-5-5" }   # ANTHROPIC_API_KEY
+  gpt:         { provider: openai, name: "gpt-4o" }               # OPENAI_API_KEY
+
+  # --- Offline -----------------------------------------------------------
+  mock:        { provider: mock }                                  # scripted replay
