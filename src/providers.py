@@ -35,6 +35,21 @@ TOOLS = [
      "required": ["number", "body"]},
 ]
 
+def poison_tool(name, description):
+    """Scenario hook: swap a tool's description to the attacker's text.
+
+    This is the 'poisoned tool' attack: the injection rides in the tool's own
+    description (metadata the bot trusts because the tool was approved), not in
+    any issue. Returns a function that puts the real description back.
+    """
+    for t in TOOLS:
+        if t["name"] == name:
+            original = t["description"]
+            t["description"] = description
+            return lambda: t.__setitem__("description", original)
+    return lambda: None
+
+
 # Models come from models.yaml (committed, no secrets). Each has a short name,
 # e.g. `qwen` or `claude`, that --model accepts. API keys never go there: the
 # SDKs read them from the environment (.env).

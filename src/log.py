@@ -7,6 +7,7 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.rule import Rule
+from rich.table import Table
 from rich.text import Text
 
 console = Console(highlight=False)
@@ -91,4 +92,27 @@ def verdict(leaked):
         msg, style = "  SAFE  ·  nothing sensitive went public  ", "bold white on green"
     console.print()
     console.print(Text(msg, style=style), justify="center")
+    console.print()
+
+
+def matrix(results, settings, model):
+    """The --all summary: which layer protects against which scenario."""
+    table = Table(title="Which layer stops what", title_style="bold",
+                  caption=f"model: {model}", min_width=44)
+    table.add_column("scenario", style="bold")
+    for layers in settings:
+        if not layers:
+            heading = "no defences"
+        elif len(layers) == 1:
+            n = next(iter(layers))
+            heading = f"layer {n}\n{LAYER_NAMES[n]}"
+        else:
+            heading = "layers " + ",".join(str(n) for n in sorted(layers))
+        table.add_column(heading, justify="center")
+    for name, leaks in results.items():
+        table.add_row(name, *("[bold white on red] LEAKED [/]" if leaked else "[bold white on green] SAFE [/]"
+                              for leaked in leaks))
+    console.print()
+    console.print(Rule(style="grey50"))
+    console.print(table, justify="center")
     console.print()

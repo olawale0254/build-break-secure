@@ -115,6 +115,15 @@ are in `models.yaml` and bring their provider with them, for example
 `--model claude`, `--model whiterabbit` or `--model mock`. Any Ollama tag
 that isn't listed works too: `--model llama3.2:3b`.
 
+**Every scenario, each layer on its own**
+
+```bash
+python src/agent.py --all              # ends with a table: which layer stops which scenario
+python src/agent.py --all --layers 1   # every scenario, with just layer 1 on
+```
+
+Layer 2 still asks you y/n, once per scenario.
+
 **The whole talk**
 
 ```bash

@@ -18,8 +18,10 @@ import log
 
 BLOCK_TAG = "[BLOCKED]"
 
-# Layer 1: the only repo files the bot needs to triage bugs.
-FILE_ALLOWLIST = {"README.md", "exporter.py"}
+# Layer 1: the only repo files the bot needs to triage bugs. CONTRIBUTING.md is
+# an ordinary doc the bot may read - but someone leaked a deploy token into it,
+# so "allowed to read" is not the same as "safe to read" (hidden-in-allowed-file).
+FILE_ALLOWLIST = {"README.md", "exporter.py", "CONTRIBUTING.md"}
 
 # Layer 4: crude on purpose. Real systems use a proper secret scanner.
 SECRET_PATTERNS = [r"AKIA", r"SECRET", r"PASSWORD", r"TOKEN", r"postgres://", r"[\w.]+@[\w-]+\.\w+"]
