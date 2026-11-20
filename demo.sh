@@ -35,7 +35,8 @@ step 5 "Layer 3: dual LLM (the bot never sees the raw issue)"         --task tri
 step 6 "Layer 4: output guard (last check before going public)"       --task triage --layers 4
 step 7 "Second scenario: the bot overreaches, NO defences"            --task overreach
 step 8 "Overreach, with layer 1: allowlist"                           --task overreach --layers 1
-step 9 "Everything on"                                                --task triage --layers 1,2,3,4
+step 9 "Layer 5: guardrails (check what goes into and out of the model)" --task triage --layers 5
+step 10 "Everything on"                                               --task triage --layers 1,2,3,4,5
 
 clear
 echo

@@ -12,7 +12,7 @@ from rich.text import Text
 
 console = Console(highlight=False)
 
-LAYER_NAMES = {1: "allowlist", 2: "human approval", 3: "dual LLM", 4: "output guard"}
+LAYER_NAMES = {1: "allowlist", 2: "human approval", 3: "dual LLM", 4: "output guard", 5: "guardrails"}
 
 
 def _short(text, limit=110):
@@ -59,6 +59,10 @@ def blocked(reason):
 
 def quarantined(summary):
     console.print(f"    [bold white on blue] DUAL LLM [/] [blue]bot only sees:[/] [grey62]{escape(_short(summary, console.width - 40))}[/]")
+
+
+def guardrail_passed(stage):
+    console.print(f"    [bold white on green] GUARDRAILS [/] [green]{stage} check passed[/]")
 
 
 def ask_approval(number, body):

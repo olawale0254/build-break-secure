@@ -125,6 +125,36 @@ def choose(model=None, provider=None):
 
 PROVIDERS = ["ollama", "anthropic", "openai", "mock"]
 
+# Claude also speaks the OpenAI chat API at this address, so OpenAI-only
+# libraries (like openai-guardrails) can run on an Anthropic key.
+ANTHROPIC_OPENAI_URL = "https://api.anthropic.com/v1/"
+
+# Layer 5's judge. By default it's the same model the bot runs on, so a local
+# Qwen run is judged by the same local Qwen. To use another judge, set `guard:`
+# in models.yaml or GUARD_MODEL=<short name> in the environment.
+GUARD = os.environ.get("GUARD_MODEL") or _CONFIG.get("guard")
+
+
+def guard_client(provider):
+    """Layer 5's judge, as (provider, OpenAI client, model name).
+
+    A mock run gets a mock judge (no client), so rehearsals stay offline.
+    """
+    if provider == "mock":
+        return "mock", None, "keywords"
+    if GUARD:
+        provider, model = MODELS[GUARD]["provider"], MODELS[GUARD]["name"]
+    else:
+        model = {"anthropic": ANTHROPIC_MODEL, "openai": OPENAI_MODEL, "ollama": OLLAMA_MODEL}[provider]
+    if provider == "ollama":
+        return provider, _openai_client(OLLAMA_BASE_URL, "ollama"), model
+    if provider == "anthropic":
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            raise RuntimeError("ANTHROPIC_API_KEY is not set (the guard model is Claude)")
+        return provider, _openai_client(ANTHROPIC_OPENAI_URL, key), model
+    return provider, _openai_client(), model
+
 
 def model_name(provider):
     return {"anthropic": ANTHROPIC_MODEL, "openai": OPENAI_MODEL,

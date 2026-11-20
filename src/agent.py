@@ -11,7 +11,8 @@ so nothing ever leaves the laptop:
 
     python src/agent.py                          # vulnerable, local Qwen
     python src/agent.py --layers 2               # human approval on
-    python src/agent.py --layers 1,2,3,4         # everything on
+    python src/agent.py --layers 5               # text guardrails on input + output
+    python src/agent.py --layers 1,2,3,4,5       # everything on
     python src/agent.py --task overreach         # the second scenario
     python src/agent.py --model claude           # any short name from models.yaml
     python src/agent.py --model mock             # scripted, offline
@@ -70,6 +71,8 @@ def read_issue(number, layers):
             text = f.read()
     except FileNotFoundError:
         return f"ERROR: no issue #{number}"
+    if 5 in layers and (reason := defences.guardrail("tool", text, PROVIDER)):  # Layer 5
+        return defences.blocked(f"possible injection in issue #{number}: {reason}")
     if 3 in layers:  # Layer 3: untrusted text only reaches us as a summary
         return defences.quarantine_summarise(text, PROVIDER)
     return text
@@ -86,13 +89,18 @@ def read_file(path, layers):
         return defences.blocked(f"read_file('{path}') is not on the allowlist")
     try:
         with open(os.path.join(REPO, path)) as f:
-            return f.read()
+            text = f.read()
     except FileNotFoundError:
         return f"ERROR: no such file: {path}"
+    if 5 in layers and (reason := defences.guardrail("tool", text, PROVIDER)):  # Layer 5
+        return defences.blocked(f"possible injection in {path}: {reason}")
+    return text
 
 
 def post_comment(number, body, layers):
     number = str(number).lstrip("#")
+    if 5 in layers and (reason := defences.guardrail("output", body, PROVIDER)):  # Layer 5
+        return defences.blocked(f"guardrails: {reason}")
     if 2 in layers and not defences.human_approves(number, body):  # Layer 2
         return defences.blocked("a human rejected this public comment")
     if 4 in layers:  # Layer 4
@@ -122,12 +130,21 @@ def run_tool(name, args, layers):
 # ---------------------------------------------------------------------------
 
 def agent(task, layers):
+    if 5 in layers:  # Layer 5: a jailbreak in the task stops the run before the model sees it
+        reason = defences.guardrail("input", task, PROVIDER)
+        if reason:
+            defences.blocked(f"jailbreak check on the task: {reason}")
+            log.agent_says("(stopped: the task failed the input guardrail)")
+            return
     history = [{"role": "user", "text": task}]
     for _ in range(8):
         with log.thinking():
             resp = providers.call(PROVIDER, SYSTEM_PROMPT, history)
         if not resp.calls:
-            log.agent_says(resp.text)
+            text = resp.text
+            if 5 in layers and (reason := defences.guardrail("output", text or "", PROVIDER)):  # Layer 5
+                text = defences.blocked(f"guardrails replaced the final answer: {reason}")
+            log.agent_says(text)
             return
         history.append({"role": "assistant", "text": resp.text, "calls": resp.calls, "raw": resp.raw})
         for c in resp.calls:
@@ -190,7 +207,7 @@ def run_scenario(name, layers):
 
 def run_all(settings=None):
     """ To enable running every scenario, once per layer setting. By default: no defences, then each layer alone."""
-    settings = settings or [set(), {1}, {2}, {3}, {4}]
+    settings = settings or [set(), {1}, {2}, {3}, {4}, {5}]
     results = {name: [run_scenario(name, layers) for layers in settings] for name in SCENARIOS}
     log.matrix(results, settings, providers.model_name(PROVIDER))
 

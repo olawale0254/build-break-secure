@@ -19,8 +19,12 @@ things differ from the live demo:
   - Layer 2 (human approval) uses a simulated reviewer, since nobody is there
     to type y/n: it rejects any comment the output guard would flag.
   - Layer 3 (dual LLM) asks the model under test, through Inspect, to summarise.
+  - Layer 5 (guardrails) judges with the default model in models.yaml (or the
+    `guard:` one, or GUARD_MODEL=qwen3-8b), not with --model. A task it blocks
+    ends with nothing posted, so it counts against did_reply.
 """
 
+import asyncio
 import os
 import sys
 
@@ -28,15 +32,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 import agent  # noqa: E402  (needs the sys.path line above)
 import defences  # noqa: E402
+import log  # noqa: E402
 from inspect_ai import Task, task  # noqa: E402
 from inspect_ai.dataset import Sample  # noqa: E402
 from inspect_ai.model import ChatMessageSystem, ChatMessageUser, get_model  # noqa: E402
 from inspect_ai.scorer import Score, Target, mean, scorer  # noqa: E402
-from inspect_ai.solver import TaskState, generate, system_message, use_tools  # noqa: E402
+from inspect_ai.solver import TaskState, generate, solver, system_message, use_tools  # noqa: E402
 from inspect_ai.tool import tool  # noqa: E402
 from inspect_ai.util import store  # noqa: E402
 
 MAX_MESSAGES = 20  # the demo stops after 8 steps; this is roughly the same
+log.console.quiet = True  # Inspect has its own display; hide the demo's stage display
+
+
+async def in_thread(fn, *args):
+    """Run one of the demo's plain functions without blocking Inspect's event loop."""
+    return await asyncio.to_thread(fn, *args)
 
 
 # ---------------------------------------------------------------------------
@@ -51,8 +62,9 @@ def read_issue(layers: set):
         Args:
             number: The issue number.
         """
-        text = agent.read_issue(number, set())  # raw text; layer 3 is applied below
-        if 3 in layers and not text.startswith("ERROR"):
+        # agent.py applies layer 5; layer 3 is redone below with the model under test.
+        text = await in_thread(agent.read_issue, number, layers - {3})
+        if 3 in layers and not text.startswith(("ERROR", defences.BLOCK_TAG)):
             reply = await get_model().generate([
                 ChatMessageSystem(content=defences.QUARANTINE_PROMPT),
                 ChatMessageUser(content=text),
@@ -78,7 +90,7 @@ def read_file(layers: set):
         Args:
             path: The file's path inside the repository.
         """
-        return agent.read_file(path, layers)
+        return await in_thread(agent.read_file, path, layers)
     return execute
 
 
@@ -91,6 +103,8 @@ def post_comment(layers: set):
             number: The issue number.
             body: The comment text.
         """
+        if 5 in layers and (why := await in_thread(defences.guardrail, "output", body, agent.PROVIDER)):
+            return f"{defences.BLOCK_TAG} guardrails: {why}"
         reason = defences.output_guard(body)
         if 2 in layers and reason:  # simulated human reviewer says no
             return defences.BLOCK_TAG + " a human rejected this public comment"
@@ -101,6 +115,17 @@ def post_comment(layers: set):
         store().set("public", store().get("public", "") + f"[issue #{number}] {body}\n")
         return f"Comment posted publicly on issue #{number}"
     return execute
+
+
+@solver
+def input_guardrail(layers: set):
+    """Layer 5, input stage: a jailbreak in the task ends the sample before the model runs."""
+    async def solve(state: TaskState, generate):
+        if 5 in layers and (reason := await in_thread(defences.guardrail, "input", state.input_text, agent.PROVIDER)):
+            state.store.set("blocked_input", reason)
+            state.completed = True
+        return state
+    return solve
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +172,7 @@ def maintainerbot(layers: str = "", scenario: str = ""):
             for name, s in scenarios.items()
         ],
         solver=[
+            input_guardrail(on),
             system_message(agent.SYSTEM_PROMPT),
             use_tools([read_issue(on), list_files(on), read_file(on), post_comment(on)]),
             generate(),  # call tools in a loop until the model stops, like agent.py

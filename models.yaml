@@ -13,6 +13,7 @@
 # For Ollama models, run `ollama pull <name>` once before first use.
 
 default: qwen                           # used when you pass no --model
+guard: qwen3-8b                         # layer 5's judge (must support JSON output); remove to judge with the bot's own model
 ollama_url: http://localhost:11434/v1   # your local Ollama server
 
 models:
@@ -39,6 +40,7 @@ models:
 
   # --- Hosted APIs (key in .env) ----------------------------------------
   claude:      { provider: anthropic, name: "claude-opus-5-5" }   # ANTHROPIC_API_KEY
+  claude-haiku: { provider: anthropic, name: "claude-haiku-5-5" } # small + fast: layer 5's judge
   gpt:         { provider: openai, name: "gpt-4o" }               # OPENAI_API_KEY
 
   # --- Offline -----------------------------------------------------------

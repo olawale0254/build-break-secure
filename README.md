@@ -30,10 +30,12 @@ build-break-secure/
 ├── .env.example               # sample for your .env (API keys)
 ├── requirements.txt
 ├── evals/
-│   └── maintainerbot.py       # Inspect AI eval: runs every scenario many times
+│   ├── maintainerbot.py       # Inspect AI eval: runs every scenario many times
+│   ├── canaries.py            # fires known jailbreak/injection prompts at layer 5
+│   └── canaries.yaml          # those prompts: obvious, reworded, and harmless controls
 ├── src/
 │   ├── agent.py               # the agent loop and its four tools
-│   ├── defences.py            # the four security layers, a few lines each
+│   ├── defences.py            # the five security layers, a few lines each
 │   ├── providers.py           # talks to Qwen (Ollama), Claude, GPT, or the mock
 │   ├── log.py                 # the stage display (rich)
 │   └── mock_model.py          # scripted offline replay, for rehearsal or as a fallback
@@ -100,7 +102,8 @@ python src/agent.py --layers 1         # allowlist: .env can't be read
 python src/agent.py --layers 2         # human approval: you type n
 python src/agent.py --layers 3         # dual LLM: the hidden checklist never reaches the bot
 python src/agent.py --layers 4         # output guard: blocks keys and emails going public
-python src/agent.py --layers 1,2,3,4   # everything on
+python src/agent.py --layers 5         # guardrails: checks text going into and out of the model
+python src/agent.py --layers 1,2,3,4,5 # everything on
 ```
 
 **Scenario 2: overreach**
@@ -189,7 +192,32 @@ The eval differs from the live demo in two places:
   any comment the output guard would flag.
 - **Layer 3:** the model under test also writes the summary.
 
-## The four layers
+Layer 5 judges with the `guard:` model from `models.yaml` (`qwen3-8b`), whatever
+`--model` you test, so every run is judged the same way. Pull it once with
+`ollama pull qwen3:8b`.
+
+## Canary tests for layer 5
+
+Layer 5 detects attacks, and detection can be fooled. `evals/canaries.py`
+measures by how much. It sends every prompt in `evals/canaries.yaml` straight to
+the detector for its stage, with no agent, so it's quick and cheap:
+
+```bash
+python evals/canaries.py                          # the guard: model judges (qwen3-8b)
+GUARD_MODEL=claude-haiku python evals/canaries.py # try another judge from models.yaml
+python evals/canaries.py --offline          # keyword stand-in, no network
+```
+
+It prints a score per group, then lists every missed attack and false alarm.
+
+Each attack comes twice: *obvious* (textbook wording) and *reworded* (same
+goal, said politely or indirectly). The repo's real attack issues are included,
+and harmless prompts check for false alarms. Expect most obvious attacks to be
+caught and some reworded ones to get through. That gap is why detection is one
+layer, not the defence. A check that can't run is counted as an error, never as
+caught.
+
+## The five layers
 
 1. **Allowlist (least privilege):** the bot can read `README.md` and
    `exporter.py` only. `list_files` is off.
@@ -199,6 +227,28 @@ The eval differs from the live demo in two places:
    a one-line summary. The bot never sees the hidden instructions.
 4. **Output guard:** a last regex check on anything going public, looking for
    keys, passwords and email addresses.
+5. **Text guardrails** ([openai-guardrails](https://github.com/openai/openai-guardrails-python)):
+   checks on text going into and out of the model.
+
+   | Stage        | Check                  | Kind  | On a hit                         |
+   |--------------|------------------------|-------|----------------------------------|
+   | task         | Jailbreak              | model | the run stops before the model is called |
+   | tool result  | prompt injection       | model | the issue or file is blocked     |
+   | output       | Secret Keys, URL Filter| rules | the comment or final answer is blocked |
+
+   The model checks run on a **judge model**: `guard: qwen3-8b` in
+   `models.yaml`, local through Ollama, so no API key and no OpenAI account are
+   needed. The judge stays the same whichever `--model` runs the bot.
+   `GUARD_MODEL=<short name>` swaps it for one run (e.g. `claude-haiku`, through
+   Anthropic's OpenAI-compatible endpoint). Remove `guard:` and the bot's own
+   model judges itself. The judge must support structured (JSON) output:
+   `qwen3.5:4b`, the default bot, doesn't (Ollama returns 501), which is why the
+   judge is the 8B model. The library's own *Prompt Injection
+   Detection* check needs OpenAI's Responses API, which Ollama and Claude don't
+   have, so the injection check is the library's *Custom Prompt Check* with
+   our own prompt. If a check can't run (no key, bad key, no network), the text
+   is blocked. The library alone would let it through. With `--model mock`, a
+   keyword list stands in for the model checks, so rehearsals stay offline.
 
 ## Reliability, measured in rehearsal on qwen3.5:4b
 
