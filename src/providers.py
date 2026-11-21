@@ -277,10 +277,10 @@ def _openai_client(base_url=None, api_key=None):
     return OpenAI()
 
 
-def _chat_call(client, model, system, history):
+def _chat_call(client, model, system, history, **extra):
     resp = client.chat.completions.create(
         model=model, messages=_openai_messages(system, history),
-        tools=_openai_tools(),
+        tools=_openai_tools(), **extra,
     )
     m = resp.choices[0].message
     calls = [{"id": tc.id or f"call_{i}", "name": tc.function.name,
@@ -289,11 +289,12 @@ def _chat_call(client, model, system, history):
     return Resp(m.content, calls)
 
 
-def _chat_complete(client, model, system, user_text):
+def _chat_complete(client, model, system, user_text, **extra):
     resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "system", "content": system},
                   {"role": "user", "content": user_text}],
+        **extra,
     )
     return resp.choices[0].message.content
 
@@ -310,10 +311,16 @@ def openai_complete(system, user_text):
 # Ollama (local, e.g. Qwen) - OpenAI-compatible endpoint, no key, no internet
 # ---------------------------------------------------------------------------
 
+# Qwen3.5 "thinks" before it answers. Left ON for the demo: with thinking, qwen3.5:4b
+# followed the hidden instruction in 5 of 5 triage runs (30-60s each); without it, only
+# 2 of 4 (but ~3x faster). OLLAMA_THINK=0 turns it off, e.g. for a quick rehearsal.
+OLLAMA_EXTRA = {"reasoning_effort": "none"} if os.environ.get("OLLAMA_THINK") == "0" else {}
+
+
 def ollama_call(system, history):
     client = _openai_client(OLLAMA_BASE_URL, "ollama")
     try:
-        return _chat_call(client, OLLAMA_MODEL, system, history)
+        return _chat_call(client, OLLAMA_MODEL, system, history, **OLLAMA_EXTRA)
     except Exception as e:
         if "does not support tools" in str(e):
             raise SystemExit(f"\n{OLLAMA_MODEL} can't call tools, so it can't drive MaintainerBot. "
@@ -325,7 +332,7 @@ def ollama_call(system, history):
 
 def ollama_complete(system, user_text):
     client = _openai_client(OLLAMA_BASE_URL, "ollama")
-    return _chat_complete(client, OLLAMA_MODEL, system, user_text)
+    return _chat_complete(client, OLLAMA_MODEL, system, user_text, **OLLAMA_EXTRA)
 
 
 # ---------------------------------------------------------------------------

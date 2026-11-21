@@ -226,3 +226,14 @@ __marimo__/
 fake_github/public_comments.txt
 # Inspect AI eval results (open with `inspect view`).
 logs/
+# Any extra virtualenvs (.venv-1, .venv-old, ...).
+.venv*/
+# Raw benchmark logs: kept locally so matrix.py / redteam.py can rebuild the
+# results, but not committed. The results (matrix.csv/md/html, redteam.md) are.
+benchmark/raw/
+benchmark/raw-redteam/
+# Benchmark outputs kept local only (matrix.html is committed).
+benchmark/matrix.csv
+benchmark/matrix.md
+benchmark/matrix_template.html
+benchmark/redteam.md
