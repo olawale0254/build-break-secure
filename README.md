@@ -3,7 +3,7 @@
 - 📑 **Slides:** [PyCon2026_Agentic_AI_In_Production.pdf](presentation_slides/PyCon2026_Agentic_AI_In_Production.pdf)
 - 🎥 **Talk video:** coming soon. For now, see the [Python Ireland playlists](https://www.youtube.com/@PythonIreland/playlists)
 
-A live AI-security demo for PyCon. **MaintainerBot** is a small AI agent that
+A live AI-security demo for PyCon Ireland 2026. **MaintainerBot** is a small AI agent that
 helps run an open-source Python project: it reads GitHub issues and repo files,
 and posts replies. We attack it, then switch on defences one layer at a time.
 
